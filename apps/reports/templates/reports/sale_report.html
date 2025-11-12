@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Reporte de Ventas Filtrado</title>
+    <style>
+        body { font-family: sans-serif; font-size: 10pt; }
+        h1 { color: #333; }
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+        th, td { border: 1px solid #ddd; padding: 6px; text-align: left; }
+        th { background-color: #f2f2f2; font-size: 8pt; }
+        .footer { text-align: right; margin-top: 20px; font-size: 8pt; }
+    </style>
+</head>
+<body>
+    <h1>Reporte de Ventas</h1>
+    <p>
+        **Filtros aplicados:** {{ filters }} <br>
+        **Generado el:** {{ current_date|date:"Y-m-d H:i" }}
+    </p>
+    <table>
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>FECHA</th>
+                <th>CLIENTE</th>
+                <th>EMAIL</th>
+                <th>PRODUCTOS VENDIDOS</th>
+                <th>MONTO TOTAL (BOB)</th>
+                <th>ESTADO</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for sale in sales_data %}
+            <tr>
+                <td>{{ sale.id }}</td>
+                <td>{{ sale.created_at|date:"Y-m-d" }}</td>
+                <td>{{ sale.user.first_name }} {{ sale.user.last_name }}</td>
+                <td>{{ sale.user.email }}</td>
+                <td>
+                    <ul>
+                        {% for detail in sale.details.all %}
+                            <li>{{ detail.product.name }} ({{ detail.quantity }}x)</li>
+                        {% endfor %}
+                    </ul>
+                </td>
+                <td>{{ sale.total_amount }}</td>
+                <td>{{ sale.status }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    <div class="footer">Total de Ventas mostradas: {{ sales_data|length }}</div>
+</body>
+</html>
