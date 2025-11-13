@@ -15,6 +15,21 @@ SECRET_KEY = os.getenv('SECRET_KEY', 'unsafe-secret')
 DEBUG = os.getenv('DEBUG', 'False') == 'True'
 ALLOWED_HOSTS = [h.strip() for h in os.getenv('ALLOWED_HOSTS', '').split(',') if h.strip()]
 
+# Para enviar correos con las notas de ventas a cada cliente 
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+EMAIL_HOST = 'smtp.gmail.com'
+EMAIL_PORT = 587
+EMAIL_USE_TLS = True
+
+EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER')
+EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD')
+DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
+
+# ✅ AGREGAR SOLO ESTAS 3 LÍNEAS NUEVAS:
+EMAIL_USE_SSL = False  # Usar TLS en lugar de SSL
+EMAIL_TIMEOUT = 30     # Timeout para emails
+EMAIL_USE_LOCALTIME = True  # Usar timezone local
+
 # Aplicaciones
 INSTALLED_APPS = [
     'django.contrib.admin',

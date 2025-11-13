@@ -16,6 +16,7 @@ from .serializers import (
     CartItemSerializer, SaleSerializer, SaleDetailReceiptSerializer,
     ActivatedWarrantySerializer
 )
+from .utils import send_low_stock_alert
 
 # Configura Stripe con tu clave secreta
 stripe.api_key = settings.STRIPE_SECRET_KEY
@@ -147,6 +148,7 @@ class StripeWebhookView(APIView):
                         # D. Reducir el Stock
                         product.stock -= item['quantity']
                         product.save()
+                        products_to_check_stock.append(product) # Añade a la lista
 
             except Exception as e:
                 print(f"Error procesando webhook: {e}")
