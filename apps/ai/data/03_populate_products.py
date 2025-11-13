@@ -4,8 +4,8 @@ import sys
 import random
 from decimal import Decimal
 from faker import Faker
-import hashlib # (NUEVO) Para generar un "identificador" de imagen
-import base64  # (NUEVO)
+import hashlib 
+import base64 
 
 # --- Configuración de Django ---
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../../'))
@@ -14,11 +14,31 @@ os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
 django.setup()
 # --- Fin Configuración ---
 
-# --- (NUEVO) CONFIGURACIÓN DE IMÁGENES DE RELLENO ---
-PLACEHOLDER_BASE_URL = "https://picsum.photos/seed/{seed}/{width}/{height}"
+# --- (ACTUALIZADO) CONFIGURACIÓN DE IMÁGENES DE RELLENO ---
+# Usamos LoremFlickr, que SÍ funciona y acepta palabras clave
+# La sintaxis es /ancho/alto/palabra_clave
+LOREMFLICKR_BASE_URL = "https://loremflickr.com/{width}/{height}/{keyword}"
 IMAGE_WIDTH = 640
 IMAGE_HEIGHT = 480
 # --- FIN CONFIGURACIÓN ---
+
+# --- (ACTUALIZADO) Mapeo de Categorías a Palabras Clave ---
+# (LoremFlickr funciona bien con una sola palabra clave en inglés)
+CATEGORY_KEYWORD_MAP = {
+    "Refrigeradores": "refrigerator",
+    "Cocinas": "kitchen",
+    "Lavadoras": "laundry",
+    "Televisores": "television",
+    "Audio y Video": "audio",
+    "Computación": "laptop",
+    "Sofás y Sillones": "sofa",
+    "Dormitorio": "bedroom",
+    "Comedor": "diningroom",
+    "Aires Acondicionados": "air,conditioner", # (Para que tome una de las dos)
+    "Ventiladores": "fan",
+}
+# --- FIN MAPEO ---
+
 
 # Importa todos los modelos necesarios
 from apps.products.models import Product, Category, Brand, Warranty
@@ -30,7 +50,6 @@ except ImportError:
 
 fake = Faker('es_ES')
 
-# --- ¡NUEVA LÓGICA DE PLANTILLAS POR CATEGORÍA! ---
 # (Tu PRODUCT_MAP va aquí, sin cambios)
 PRODUCT_MAP = {
     # Electrodomésticos
@@ -119,7 +138,7 @@ def generate_product_details(category_name, brand_name):
         elif category_name == "Televisores":
             pulgadas = random.choice([43, 50, 55, 65])
             so = random.choice(["Tizen", "WebOS", "Google TV"])
-            name = base_name.format(pulgADAS)
+            name = base_name.format(pulgadas)
             desc = desc_template.format(pulgadas, so)
         elif category_name == "Audio y Video":
             potencia = random.choice([1000, 1500, 2000])
@@ -171,7 +190,7 @@ def generate_product_details(category_name, brand_name):
 
 def create_products(count=50):
     # (Pequeña edición en el print)
-    print(f"Poblando {count} productos (Coherentes + Placeholders)...")
+    print(f"Poblando {count} productos (Coherentes + LoremFlickr)...")
 
     # 1. Obtiene las dependencias (Marcas, Garantías y Categorías)
     brands = list(Brand.objects.all())
@@ -210,15 +229,27 @@ def create_products(count=50):
         price = Decimal(random.uniform(500.0, 9000.0)).quantize(Decimal('0.01'))
         stock = random.randint(5, 40)
         
-        # --- (NUEVO) 5. Construir la URL de la imagen Placeholder ---
-        seed_data = f"{name}-{category_obj.name}-{i}"
-        seed_hash = hashlib.sha256(seed_data.encode()).hexdigest()
+        # --- (ACTUALIZADO) 5. Construir la URL de la imagen (LoremFlickr por Categoría) ---
         
-        image_url = PLACEHOLDER_BASE_URL.format(
-            seed=seed_hash,
+        # 5.1. Obtener la palabra clave de nuestro mapa
+        category_name = category_obj.name
+        # Si no encuentra la categoría, usa 'product' como fallback
+        keyword = CATEGORY_KEYWORD_MAP.get(category_name, 'product') 
+
+        # 5.2. Construir la URL
+        image_url = LOREMFLICKR_BASE_URL.format(
             width=IMAGE_WIDTH,
-            height=IMAGE_HEIGHT
+            height=IMAGE_HEIGHT,
+            keyword=keyword
         )
+        
+        # 5.3. (NUEVO) Agregar un "seed" para evitar el cache
+        # LoremFlickr a veces cachea la misma imagen para la misma keyword.
+        # Agregar un parámetro inútil (como un hash) fuerza una nueva imagen.
+        seed_data = f"{name}-{category_obj.name}-{i}"
+        seed_hash = hashlib.sha256(seed_data.encode()).hexdigest()[:10]
+        image_url = f"{image_url}?lock={seed_hash}"
+
         
         # --- (ACTUALIZADO) 6. Crear el Producto ---
         Product.objects.create(
@@ -229,11 +260,11 @@ def create_products(count=50):
             category=category_obj, # Asigna el objeto categoría real
             brand=brand_obj,       # Asigna el objeto marca real
             warranty=warranty_obj, # Asigna el objeto garantía real
-            image_url=image_url    # Asigna la URL del placeholder
+            image_url=image_url    # Asigna la URL de LoremFlickr
         )
 
     # (Pequeña edición en el print)
-    print(f"\n--- ¡{count} Productos (Coherentes + Placeholders) creados con éxito! ---")
+    print(f"\n--- ¡{count} Productos (Coherentes + LoremFlickr) creados con éxito! ---")
 
 if __name__ == '__main__':
     create_products()

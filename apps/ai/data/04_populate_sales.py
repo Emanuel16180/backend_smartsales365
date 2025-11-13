@@ -22,9 +22,10 @@ from apps.sales.models import Sale, SaleDetail, ActivatedWarranty
 
 User = get_user_model()
 
-# --- Configuración del Script ---
-SALE_COUNT = 1000  # Cuántas ventas crear
-DAYS_BACK = 365    # Desde hace cuántos días (1 año)
+# --- (ACTUALIZADO) Configuración del Script ---
+SALE_COUNT = 3000  # Cuántas ventas crear
+DAYS_BACK = 1825   # Desde hace cuántos días (5 años)
+# --- FIN ACTUALIZACIÓN ---
 
 def create_historical_sales(count=SALE_COUNT):
     print(f"Iniciando la creación de {count} ventas históricas...")
@@ -71,7 +72,7 @@ def create_historical_sales(count=SALE_COUNT):
                 
                 # A. Elegir un usuario y una fecha
                 random_user = random.choice(users)
-                random_days_ago = random.randint(0, DAYS_BACK)
+                random_days_ago = random.randint(0, DAYS_BACK) # Usará 1825
                 sale_date = today - timedelta(days=random_days_ago)
 
                 # B. Construir un "carrito"

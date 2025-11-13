@@ -2,6 +2,7 @@ import os
 import django
 import sys
 from faker import Faker
+import random # Importamos random
 
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../../'))
 sys.path.append(project_root)
@@ -41,17 +42,32 @@ def setup_data():
     Category.objects.create(name='Ventiladores', parent=c_clima)
 
 
-    print("Poblando Marcas...")
+    print("Poblando Marcas (orden aleatorio)...")
     marcas = ['Samsung', 'LG', 'Sony', 'Hisense', 'Mabe', 'Indurama', 'Oster']
+    # --- CAMBIO: Mezclamos la lista ---
+    random.shuffle(marcas) 
+    
     for marca_nombre in marcas:
         Brand.objects.create(name=marca_nombre)
 
 
     print("Poblando Proveedores de Garantía...")
+    # --- CAMBIO: Nuevos nombres para proveedores ---
+    provider_names = [
+        'Servicio Técnico Autorizado S.A.',
+        'Garantía Total Bolivia',
+        'ReparaFácil S.R.L.',
+        'ElectroService Plus',
+        'Soluciones Hogar',
+        'ServiTec Autorizado',
+        'Asistencia Inmediata S.R.L.'
+    ]
+    
     providers = []
-    for _ in range(7):
+    # Usamos la lista de nombres en lugar de un rango
+    for name in provider_names:
         provider = WarrantyProvider.objects.create(
-            name=f"{fake.company()} S.R.L.",
+            name=name,
             contact_email=fake.email(),
             contact_phone=fake.phone_number()
         )
@@ -59,27 +75,28 @@ def setup_data():
 
 
     print("Poblando Plantillas de Garantía...")
+    # --- CAMBIO: Nuevos títulos y términos para garantías ---
     Warranty.objects.create(
-        title="Garantía 1 Año (Fábrica)",
-        terms="Cubre defectos de fabricación por 365 días.",
+        title="Garantía Estándar (12 Meses)",
+        terms="Cobertura estándar por 12 meses contra defectos de fábrica. No incluye daños por mal uso.",
         duration_days=365,
         provider_id=providers[0].id
     )
     Warranty.objects.create(
-        title="Garantía 6 Meses (Tienda)",
-        terms="Cubre fallas de componentes por 180 días.",
+        title="Garantía Limitada (6 Meses)",
+        terms="Cobertura de 180 días en partes y componentes principales. Excluye accesorios y consumibles.",
         duration_days=180,
         provider_id=providers[1].id
     )
     Warranty.objects.create(
-        title="Garantía 2 Años Motor (Extendida)",
-        terms="Cubre fallas de motor por 730 días.",
+        title="Garantía Extendida Motor/Compresor (2 Años)",
+        terms="Cobertura especial de 2 años (730 días) exclusivamente para el motor o compresor del equipo.",
         duration_days=730,
         provider_id=providers[2].id
     )
     Warranty.objects.create(
-        title="Garantía 3 Meses (Componentes)",
-        terms="Cubre fallas en componentes electrónicos por 90 días.",
+        title="Garantía Básica (90 Días)",
+        terms="Cubre fallas en componentes electrónicos básicos por 90 días. Mano de obra no incluida.",
         duration_days=90,
         provider_id=providers[3].id
     )
