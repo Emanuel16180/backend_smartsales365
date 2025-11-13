@@ -113,8 +113,13 @@ class StripeWebhookView(APIView):
             cart = json.loads(metadata['cart'])
             total_amount = payment_intent['amount'] / 100
 
+            # --- ¡ARREGLO AQUÍ! ---
+            # Define la lista ANTES del bloque 'try'
+            products_to_check_stock = []
+            # --- FIN DEL ARREGLO ---
+
             try:
-                # 3. ¡Transacción Atómica! Si algo falla, se revierte todo.
+                # 3. ¡Transacción Atómica!
                 with transaction.atomic():
                     
                     # A. Crear la Venta (Sale)
@@ -148,15 +153,24 @@ class StripeWebhookView(APIView):
                         # D. Reducir el Stock
                         product.stock -= item['quantity']
                         product.save()
-                        products_to_check_stock.append(product) # Añade a la lista
+                        
+                        # Añade el producto actualizado a la lista
+                        products_to_check_stock.append(product)
+
+                # --- ¡FIN DE LA TRANSACCIÓN ATÓMICA! ---
+                
+                # --- 4. VERIFICAR STOCK Y ENVIAR ALERTA (FUERA DE LA TRANSACCIÓN) ---
+                # Ahora 'products_to_check_stock' SÍ está definida
+                for product in products_to_check_stock:
+                    if product.stock <= 10:
+                        send_low_stock_alert(product)
 
             except Exception as e:
                 print(f"Error procesando webhook: {e}")
                 return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-        # 4. Confirmar a Stripe que recibimos el evento
+        # 5. Confirmar a Stripe que recibimos el evento
         return Response(status=status.HTTP_200_OK)
-
 # --- ENDPOINTS 3 y 4: VER COMPRAS Y RECIBOS ---
 
 class MyPurchasesListView(generics.ListAPIView):
