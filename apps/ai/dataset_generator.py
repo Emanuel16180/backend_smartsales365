@@ -9,65 +9,73 @@ project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')
 sys.path.append(project_root)
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
 django.setup()
-# --- Fin Configuración ---
 
-from apps.sales.models import Sale
+from apps.sales.models import SaleDetail
 
 def create_training_dataset():
-    print("Iniciando generación de dataset...")
+    print("Iniciando generación de dataset POR PRODUCTO...")
     
-    # 1. Extraer todas las ventas "Completadas" de la BD
-    sales = Sale.objects.filter(status=Sale.SaleStatus.COMPLETED)
+    # 1. Extraer detalles de ventas completadas
+    # Necesitamos: Fecha, ID del Producto, Cantidad Vendida
+    details = SaleDetail.objects.filter(sale__status='COMPLETED').values(
+        'sale__created_at', 
+        'product__id', 
+        'quantity'
+    )
     
-    if not sales.exists():
-        print("Error: No hay ventas en la base de datos para entrenar.")
+    if not details.exists():
+        print("Error: No hay ventas para entrenar.")
         return
 
-    # Convertir a un DataFrame de Pandas
-    df = pd.DataFrame(list(sales.values('created_at', 'total_amount')))
+    df = pd.DataFrame(list(details))
     
-    # 2. Transformar (Ingeniería de Características)
-    # Convertir fechas a formato datetime
-    df['created_at'] = pd.to_datetime(df['created_at'])
-    df = df.set_index('created_at')
+    # 2. Limpieza y Agrupación
+    df['date'] = pd.to_datetime(df['sale__created_at'])
+    df['product_id'] = df['product__id']
     
-    # Agrupar las ventas por mes (MS = Month Start) y sumarlas
-    df_monthly = df['total_amount'].resample('MS').sum().reset_index()
-    df_monthly.columns = ['date', 'total_sales']
+    # Agrupar por Mes Y por Producto
+    # Esto nos da: Enero -> TV Samsung -> 5 vendidos
+    df_grouped = df.groupby([pd.Grouper(key='date', freq='MS'), 'product_id'])['quantity'].sum().reset_index()
     
-    print(f"Datos agrupados por mes (primeras filas):\n{df_monthly.head()}")
+    print(f"Datos agrupados (muestras): \n{df_grouped.head()}")
 
-    # 3. Crear Características (Features)
-    # El modelo predecirá las ventas del próximo mes (y)
-    # usando las ventas de los meses anteriores (X)
+    # 3. Ingeniería de Características (Lags por Producto)
+    # Necesitamos que los lags sean respetando el ID del producto
+    df_final = pd.DataFrame()
     
-    df_monthly['year'] = df_monthly['date'].dt.year
-    df_monthly['month'] = df_monthly['date'].dt.month
+    for pid, group in df_grouped.groupby('product_id'):
+        group = group.sort_values('date')
+        
+        # Features de tiempo
+        group['month'] = group['date'].dt.month
+        
+        # Lags: Cuánto vendió este producto hace 1, 2 y 3 meses
+        group['lag_1'] = group['quantity'].shift(1)
+        group['lag_2'] = group['quantity'].shift(2)
+        group['lag_3'] = group['quantity'].shift(3)
+        
+        # Promedio móvil (Rolling mean) de 3 meses (Tendencia reciente)
+        group['rolling_mean_3'] = group['quantity'].shift(1).rolling(window=3).mean()
+        
+        # Target: Cuánto venderá el mes siguiente
+        group['target'] = group['quantity'] # El target es la cantidad actual
+        # Pero para entrenar, usamos los lags para predecir el actual.
+        # Al generar features para predicción futura, usaremos los datos actuales como lags.
+        
+        df_final = pd.concat([df_final, group])
     
-    # "Lag features" (ventas del mes pasado, de hace 2 meses, etc.)
-    df_monthly['sales_lag_1'] = df_monthly['total_sales'].shift(1)
-    df_monthly['sales_lag_2'] = df_monthly['total_sales'].shift(2)
-    df_monthly['sales_lag_3'] = df_monthly['total_sales'].shift(3)
-    
-    # 4. Crear el Target (lo que queremos predecir)
-    # El target 'y' son las ventas del *siguiente* mes
-    df_monthly['target_next_month_sales'] = df_monthly['total_sales'].shift(-1)
-    
-    # 5. Limpiar
-    # Eliminar filas con NaN (los primeros meses que no tienen lag,
-    # y el último mes que no tiene target)
-    df_final = df_monthly.dropna()
+    # 4. Limpieza final
+    df_final = df_final.dropna() # Eliminar filas sin historia suficiente
     
     if df_final.empty:
-        print("Error: No se generaron suficientes datos (necesitas al menos 5 meses de ventas).")
+        print("Error: Datos insuficientes por producto.")
         return
 
-    # 6. Cargar (Guardar el dataset limpio)
-    output_path = os.path.join(os.path.dirname(__file__), 'data/training_dataset.csv')
+    output_path = os.path.join(os.path.dirname(__file__), 'data/product_training_dataset.csv')
     df_final.to_csv(output_path, index=False)
     
-    print(f"\n¡Dataset de entrenamiento guardado en {output_path}!")
-    print(f"Columnas del dataset: {df_final.columns.tolist()}")
+    print(f"\n¡Dataset por producto guardado en {output_path}!")
+    print(f"Columnas: {df_final.columns.tolist()}")
 
 if __name__ == '__main__':
     create_training_dataset()
