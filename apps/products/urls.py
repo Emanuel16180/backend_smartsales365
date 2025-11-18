@@ -74,4 +74,8 @@ urlpatterns = [
 
     path('brands/', views.BrandListCreateView.as_view(), name='brand-list-create'),
     path('brands/<int:pk>/', views.BrandRetrieveUpdateDestroyView.as_view(), name='brand-detail'),
+
+    # --- Rutas de Favoritos ---
+    path('favorites/', views.FavoriteListView.as_view(), name='favorite-list'),
+    path('favorites/toggle/', views.ToggleFavoriteView.as_view(), name='favorite-toggle'),
 ]

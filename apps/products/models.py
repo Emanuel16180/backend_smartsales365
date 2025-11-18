@@ -5,6 +5,7 @@ from datetime import timedelta
 from django.db import models
 from django.conf import settings
 from django.utils import timezone
+from django.conf import settings
 
 class Category(models.Model):
     
@@ -110,3 +111,25 @@ class Product(models.Model):
 
     def __str__(self):
         return self.name
+
+class Favorite(models.Model):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, 
+        on_delete=models.CASCADE, 
+        related_name='favorites'
+    )
+    product = models.ForeignKey(
+        Product, 
+        on_delete=models.CASCADE, 
+        related_name='favorited_by'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        # Evita duplicados: Un usuario no puede tener el mismo producto 2 veces en favoritos
+        unique_together = ('user', 'product')
+        verbose_name = "Favorito"
+        verbose_name_plural = "Favoritos"
+
+    def __str__(self):
+        return f"{self.user.email} -> {self.product.name}"

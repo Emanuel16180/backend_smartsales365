@@ -1,6 +1,7 @@
 # apps/products/serializers.py
 from rest_framework import serializers
 from .models import Category, WarrantyProvider, Warranty, Product, Brand
+from .models import Favorite
 from config.supabase_client import supabase
 import uuid
 
@@ -157,3 +158,19 @@ class BrandSerializer(serializers.ModelSerializer):
         # Asegúrate de que el modelo Brand ya esté importado
         model = Brand
         fields = '__all__'
+
+class FavoriteSerializer(serializers.ModelSerializer):
+    # Reutilizamos el ProductSerializer o ProductLiteSerializer para mostrar detalles
+    # Si no tienes ProductLiteSerializer aquí, usa ProductSerializer o defínelo
+    product = ProductSerializer(read_only=True) 
+    
+    # Este campo es para cuando CREAMOS un favorito (solo enviamos el ID)
+    product_id = serializers.PrimaryKeyRelatedField(
+        queryset=Product.objects.all(),
+        source='product',
+        write_only=True
+    )
+
+    class Meta:
+        model = Favorite
+        fields = ['id', 'product', 'product_id', 'created_at']
