@@ -11,68 +11,130 @@ from django_filters.rest_framework import DjangoFilterBackend
 from .filters import SaleFilter
 
 from apps.products.models import Product, Warranty
-from .models import Sale, SaleDetail, ActivatedWarranty, ActivatedWarranty
+from .models import Sale, SaleDetail, ActivatedWarranty, ActivatedWarranty, Coupon
 from .serializers import (
     CartItemSerializer, SaleSerializer, SaleDetailReceiptSerializer,
-    ActivatedWarrantySerializer
+    ActivatedWarrantySerializer, CouponSerializer
 )
 from .utils import send_low_stock_alert
+from rest_framework import viewsets
+from rest_framework.decorators import action
 
 # Configura Stripe con tu clave secreta
 stripe.api_key = settings.STRIPE_SECRET_KEY
 
-# --- ENDPOINT 1: CREAR INTENTO DE PAGO ---
+class CouponViewSet(viewsets.ModelViewSet):
+    """
+    CRUD completo de cupones para el Admin.
+    Incluye endpoint 'validate' para que la App Móvil verifique códigos.
+    """
+    queryset = Coupon.objects.all().order_by('-id')
+    serializer_class = CouponSerializer
+    permission_classes = [IsAdminUser] # Por defecto solo Admin
+
+    # Endpoint extra: POST /api/v1/sales/coupons/validate/
+    # Accesible para CUALQUIER persona (AllowAny) para chequear código antes de pagar
+    @action(detail=False, methods=['post'], permission_classes=[AllowAny])
+    def validate(self, request):
+        code = request.data.get('code', '').strip().upper()
+        try:
+            coupon = Coupon.objects.get(code=code)
+            if coupon.is_valid:
+                return Response({
+                    "valid": True,
+                    "discount": coupon.discount_amount,
+                    "code": coupon.code,
+                    "message": "¡Cupón aplicado correctamente!"
+                })
+            else:
+                return Response({
+                    "valid": False, 
+                    "error": "Este cupón ya expiró o se agotó."
+                }, status=400)
+        except Coupon.DoesNotExist:
+            return Response({
+                "valid": False, 
+                "error": "Código de cupón inválido."
+            }, status=404)
 
 class CreatePaymentIntentView(APIView):
     """
-    Recibe un carrito de compras, valida el stock y crea un PaymentIntent en Stripe.
-    Devuelve un 'clientSecret' al frontend.
+    Recibe carrito y cupón (opcional).
+    Valida stock, calcula descuento y crea PaymentIntent en Stripe.
     """
     permission_classes = [IsAuthenticated]
 
     def post(self, request, *args, **kwargs):
         # 1. Validar el carrito de entrada
-        cart_serializer = CartItemSerializer(data=request.data.get('cart', []), many=True)
+        cart_data = request.data.get('cart', [])
+        coupon_code = request.data.get('coupon_code', None) # <--- Recibimos el código
+
+        cart_serializer = CartItemSerializer(data=cart_data, many=True)
         if not cart_serializer.is_valid():
             return Response(cart_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         
         cart = cart_serializer.validated_data
         
-        # 2. Calcular el total y validar stock EN EL BACKEND
+        # 2. Calcular el total y validar stock
         total_amount = 0
-        products_for_stripe_metadata = [] # Guardamos info para el webhook
+        products_for_stripe_metadata = [] 
         
         try:
-            with transaction.atomic(): # Bloqueamos la DB para chequear stock
+            # Usamos atomic para asegurar lectura consistente del stock
+            with transaction.atomic(): 
                 for item in cart:
+                    # Bloqueamos el producto momentáneamente para leer stock real
                     product = Product.objects.select_for_update().get(id=item['product_id'])
                     
                     if product.stock < item['quantity']:
                         return Response({"error": f"Stock insuficiente para {product.name}"}, status=status.HTTP_400_BAD_REQUEST)
                     
-                    total_amount += product.price * item['quantity']
+                    total_amount += float(product.price) * item['quantity']
+                    
                     products_for_stripe_metadata.append({
                         "id": product.id,
                         "name": product.name,
                         "quantity": item['quantity'],
-                        "price": str(product.price) # Guardamos como string
+                        "price": str(product.price)
                     })
 
-            # 3. Crear el Intento de Pago en Stripe
-            # Stripe maneja centavos, así que multiplicamos por 100
+            # 3. Lógica de Cupón
+            discount = 0.0
+            valid_coupon_id = None
+
+            if coupon_code:
+                try:
+                    # Busamos el cupón (case insensitive)
+                    coupon = Coupon.objects.get(code=str(coupon_code).strip().upper())
+                    if coupon.is_valid:
+                        discount = float(coupon.discount_amount)
+                        valid_coupon_id = coupon.id
+                except Coupon.DoesNotExist:
+                    # Si el cupón no existe, simplemente no aplicamos descuento (o podrías retornar error)
+                    pass
+
+            # Calcular total final (mínimo 0)
+            final_amount = total_amount - discount
+            if final_amount < 0: 
+                final_amount = 0
+
+            # 4. Crear el Intento de Pago en Stripe
             intent = stripe.PaymentIntent.create(
-                amount=int(total_amount * 100),
-                currency='bob', # O 'bob', 'mxn', etc.
+                amount=int(final_amount * 100), # Stripe usa centavos
+                currency='bob',
                 metadata={
                     "user_id": request.user.id,
-                    "cart": json.dumps(products_for_stripe_metadata) # Guardamos el carrito
+                    "cart": json.dumps(products_for_stripe_metadata),
+                    "coupon_id": valid_coupon_id # <--- Guardamos ID del cupón en Stripe
                 },
                 payment_method_types=['card']
             )
             
-            # 4. Devolver el 'client_secret' al frontend
             return Response({
-                'clientSecret': intent.client_secret
+                'clientSecret': intent.client_secret,
+                'original_total': total_amount,
+                'discount': discount,
+                'final_total': final_amount
             }, status=status.HTTP_200_OK)
             
         except Product.DoesNotExist:
@@ -80,14 +142,15 @@ class CreatePaymentIntentView(APIView):
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-# --- ENDPOINT 2: WEBHOOK DE STRIPE ---
+
+# --- ENDPOINT 2: WEBHOOK DE STRIPE (CON USO DE CUPÓN) ---
 
 class StripeWebhookView(APIView):
     """
-    Escucha los eventos de Stripe, principalmente 'payment_intent.succeeded'.
-    Verifica la firma, crea la Venta, reduce el stock y activa garantías.
+    Escucha 'payment_intent.succeeded'.
+    Crea Venta, reduce stock, activa garantías y REGISTRA USO DEL CUPÓN.
     """
-    permission_classes = [AllowAny] # Debe ser pública
+    permission_classes = [AllowAny]
 
     def post(self, request, *args, **kwargs):
         payload = request.body
@@ -95,45 +158,56 @@ class StripeWebhookView(APIView):
         webhook_secret = settings.STRIPE_WEBHOOK_SECRET
         event = None
 
-        # 1. Verificar la firma del Webhook (¡Seguridad!)
+        # 1. Verificar firma
         try:
-            event = stripe.Webhook.construct_event(
-                payload, sig_header, webhook_secret
-            )
-        except ValueError:
-            return Response(status=status.HTTP_400_BAD_REQUEST) # Payload inválido
-        except stripe.error.SignatureVerificationError:
-            return Response(status=status.HTTP_400_BAD_REQUEST) # Firma inválida
+            event = stripe.Webhook.construct_event(payload, sig_header, webhook_secret)
+        except (ValueError, stripe.error.SignatureVerificationError):
+            return Response(status=status.HTTP_400_BAD_REQUEST)
 
-        # 2. Manejar el evento de "Pago Exitoso"
+        # 2. Manejar Pago Exitoso
         if event['type'] == 'payment_intent.succeeded':
             payment_intent = event['data']['object']
             metadata = payment_intent['metadata']
+            
             user_id = metadata['user_id']
             cart = json.loads(metadata['cart'])
             total_amount = payment_intent['amount'] / 100
+            
+            # Recuperar el ID del cupón (puede ser None o string 'None')
+            coupon_id = metadata.get('coupon_id')
+            if coupon_id == 'None': coupon_id = None
 
-            # --- ¡ARREGLO AQUÍ! ---
-            # Define la lista ANTES del bloque 'try'
+            # Lista para alertas de stock (definida ANTES del try)
             products_to_check_stock = []
-            # --- FIN DEL ARREGLO ---
 
             try:
-                # 3. ¡Transacción Atómica!
+                # 3. Transacción Atómica
                 with transaction.atomic():
                     
-                    # A. Crear la Venta (Sale)
+                    # A. Procesar Cupón (Incrementar uso)
+                    coupon_instance = None
+                    if coupon_id:
+                        try:
+                            # select_for_update para evitar condiciones de carrera en el contador
+                            coupon_instance = Coupon.objects.select_for_update().get(id=coupon_id)
+                            coupon_instance.used_count += 1
+                            coupon_instance.save()
+                        except Coupon.DoesNotExist:
+                            logger.warning(f"Cupón ID {coupon_id} no encontrado en webhook.")
+
+                    # B. Crear la Venta
                     sale = Sale.objects.create(
                         user_id=user_id,
                         total_amount=total_amount,
                         status=Sale.SaleStatus.COMPLETED,
-                        stripe_payment_intent_id=payment_intent.id
+                        stripe_payment_intent_id=payment_intent.id,
+                        coupon=coupon_instance # <--- Asociamos el cupón
                     )
                     
+                    # C. Procesar Productos
                     for item in cart:
                         product = Product.objects.select_for_update().get(id=item['id'])
 
-                        # B. Crear el Detalle de Venta (SaleDetail)
                         SaleDetail.objects.create(
                             sale=sale,
                             product=product,
@@ -141,7 +215,6 @@ class StripeWebhookView(APIView):
                             price_at_purchase=item['price']
                         )
                         
-                        # C. Activar la Garantía
                         if product.warranty:
                             ActivatedWarranty.objects.create(
                                 user_id=user_id,
@@ -150,27 +223,24 @@ class StripeWebhookView(APIView):
                                 warranty_template=product.warranty
                             )
 
-                        # D. Reducir el Stock
                         product.stock -= item['quantity']
                         product.save()
                         
-                        # Añade el producto actualizado a la lista
                         products_to_check_stock.append(product)
 
-                # --- ¡FIN DE LA TRANSACCIÓN ATÓMICA! ---
+                # --- FIN TRANSACCIÓN ---
                 
-                # --- 4. VERIFICAR STOCK Y ENVIAR ALERTA (FUERA DE LA TRANSACCIÓN) ---
-                # Ahora 'products_to_check_stock' SÍ está definida
+                # 4. Enviar Alertas (Fuera de la transacción)
                 for product in products_to_check_stock:
                     if product.stock <= 10:
                         send_low_stock_alert(product)
 
             except Exception as e:
-                print(f"Error procesando webhook: {e}")
+                logger.error(f"Error procesando webhook: {e}")
                 return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-        # 5. Confirmar a Stripe que recibimos el evento
         return Response(status=status.HTTP_200_OK)
+
 # --- ENDPOINTS 3 y 4: VER COMPRAS Y RECIBOS ---
 
 class MyPurchasesListView(generics.ListAPIView):

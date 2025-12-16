@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Sale, SaleDetail, ActivatedWarranty
+from .models import Sale, SaleDetail, ActivatedWarranty, Coupon
 from apps.products.models import Product
 from apps.users.serializers import UserSerializer  # (Ajusta si tu serializer de User está en otra parte)
 
@@ -58,3 +58,11 @@ class CartItemSerializer(serializers.Serializer):
     """ Valida cada item del carrito que envía el frontend """
     product_id = serializers.IntegerField()
     quantity = serializers.IntegerField(min_value=1)
+
+class CouponSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Coupon
+        fields = '__all__'
+
+class ValidateCouponSerializer(serializers.Serializer):
+    code = serializers.CharField(max_length=20)

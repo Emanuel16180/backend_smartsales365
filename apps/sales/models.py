@@ -4,6 +4,31 @@ from datetime import timedelta
 from django.conf import settings
 from apps.products.models import Product, Warranty
 
+class Coupon(models.Model):
+    code = models.CharField(max_length=20, unique=True, verbose_name="Código")
+    discount_amount = models.DecimalField(max_digits=10, decimal_places=2, verbose_name="Descuento (Bs)")
+    active = models.BooleanField(default=True, verbose_name="¿Activo?")
+    usage_limit = models.PositiveIntegerField(default=1, verbose_name="Límite de usos")
+    used_count = models.PositiveIntegerField(default=0, verbose_name="Veces usado")
+    expiration_date = models.DateTimeField(null=True, blank=True, verbose_name="Fecha Expiración")
+
+    def __str__(self):
+        return f"{self.code} -Bs.{self.discount_amount}"
+
+    @property
+    def is_valid(self):
+        # Verifica si está activo, si no ha expirado y si le quedan usos
+        from django.utils import timezone
+        now = timezone.now()
+        
+        if not self.active:
+            return False
+        if self.used_count >= self.usage_limit:
+            return False
+        if self.expiration_date and now > self.expiration_date:
+            return False
+        return True
+
 # Modelo 1: La Venta (u Orden)
 class Sale(models.Model):
     class SaleStatus(models.TextChoices):
@@ -25,6 +50,7 @@ class Sale(models.Model):
     )
     stripe_payment_intent_id = models.CharField(max_length=100, unique=True, null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    coupon = models.ForeignKey(Coupon, on_delete=models.SET_NULL, null=True, blank=True, related_name='sales')
     
     def __str__(self):
         return f"Venta {self.id} - {self.user.email} - {self.status}"
