@@ -5,6 +5,7 @@ from .views import (
     CustomTokenObtainPairView,
     TokenRefreshView,
     CustomerListView
+    CustomTokenObtainPairView
 )
 
 urlpatterns = [
@@ -12,6 +13,7 @@ urlpatterns = [
     
     # POST /api/v1/users/login/
     # (Envía 'email' y 'password', devuelve 'access' y 'refresh' token)
+    #path('login/', CustomTokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('login/', CustomTokenObtainPairView.as_view(), name='token_obtain_pair'),
     
     # POST /api/v1/users/login/refresh/

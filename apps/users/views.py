@@ -2,6 +2,7 @@ from rest_framework import generics, permissions
 from rest_framework.response import Response
 from .models import User
 from .serializers import UserSerializer, UserRegisterSerializer
+from .serializers import CustomTokenObtainPairSerializer
 from rest_framework_simplejwt.views import (
     TokenObtainPairView as BaseTokenObtainPairView,
     TokenRefreshView,
@@ -42,3 +43,9 @@ class CustomerListView(generics.ListAPIView):
     def get_queryset(self):
         # Filtra el modelo User por el rol 'CUSTOMER'
         return User.objects.filter(role=User.Role.CUSTOMER).order_by('email')
+
+class CustomTokenObtainPairView(TokenObtainPairView):
+    """
+    Vista de Login que usa nuestro serializer personalizado
+    """
+    serializer_class = CustomTokenObtainPairSerializer
