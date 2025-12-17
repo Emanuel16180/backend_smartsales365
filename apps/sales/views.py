@@ -356,13 +356,19 @@ class DeliveryViewSet(viewsets.ReadOnlyModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        # Si es Admin, ve todas. Si es Delivery, solo las suyas.
-        if user.role == user.Role.ADMIN:
+
+        # 1. Si es ADMIN o EMPLOYEE -> Ven TODAS las entregas
+        # Usamos una lista de strings para evitar errores de atributos
+        if user.role in ['ADMIN', 'EMPLOYEE']: 
             return Delivery.objects.all().order_by('-created_at')
-        elif user.role == user.Role.DELIVERY:
+
+        # 2. Si es DELIVERY -> Ve solo las asignadas a él
+        elif user.role == 'DELIVERY':
             return Delivery.objects.filter(driver=user).order_by('-created_at')
+
+        # 3. Cualquier otro rol (Cliente) -> No ve nada
         else:
-            return Delivery.objects.none() # Clientes no ven esto por aquí
+            return Delivery.objects.none()
 
     # Endpoint para cambiar estado: PATCH /api/v1/sales/delivery/{id}/update-status/
     @action(detail=True, methods=['patch'])

@@ -73,16 +73,41 @@ class DeliveryInfoSerializer(serializers.Serializer):
     longitude = serializers.FloatField(required=True)
     description = serializers.CharField(required=False, allow_blank=True)
 
+class DeliveryProductSerializer(serializers.ModelSerializer):
+    product_name = serializers.CharField(source='product.name', read_only=True)
+    
+    class Meta:
+        model = SaleDetail
+        fields = ['product_name', 'quantity']
+
 # 2. Serializer para mostrar al Repartidor (Output)
 class DeliveryOrderSerializer(serializers.ModelSerializer):
-    # Incluimos info básica de la venta y del cliente
     customer_name = serializers.CharField(source='sale.user.full_name', read_only=True)
-    customer_phone = serializers.CharField(source='sale.user.phone_number', read_only=True) # Si tienes telf
+    customer_phone = serializers.CharField(source='sale.user.phone_number', read_only=True) # Si tienes el campo phone
     sale_total = serializers.DecimalField(source='sale.total_amount', max_digits=10, decimal_places=2, read_only=True)
     
+    # --- AQUÍ LA MAGIA: Listamos los productos ---
+    products = serializers.SerializerMethodField()
+
     class Meta:
         model = Delivery
         fields = [
-            'id', 'status', 'address', 'latitude', 'longitude', 
-            'description', 'customer_name', 'customer_phone', 'sale_total', 'created_at'
+            'id', 
+            'status', 
+            'address', 
+            'latitude', 
+            'longitude', 
+            'description', 
+            'customer_name', 
+            'customer_phone', 
+            'sale_total', 
+            'products',  # <--- No olvides agregar este campo aquí
+            'created_at'
         ]
+
+    def get_products(self, obj):
+        # obj es la instancia de Delivery.
+        # Accedemos a la Venta (obj.sale) y luego a sus detalles.
+        # Nota: Django usa 'saledetail_set' por defecto para relaciones inversas.
+        details = SaleDetail.objects.filter(sale=obj.sale) 
+        return DeliveryProductSerializer(details, many=True).data
