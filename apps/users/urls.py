@@ -4,7 +4,7 @@ from .views import (
     UserProfileView, 
     CustomTokenObtainPairView,
     TokenRefreshView,
-    CustomerListView
+    CustomerListView,
     CustomTokenObtainPairView
 )
 
