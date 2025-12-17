@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Sale, SaleDetail, ActivatedWarranty, Coupon
+from .models import Sale, SaleDetail, ActivatedWarranty, Coupon, Delivery
 from apps.products.models import Product
 from apps.users.serializers import UserSerializer  # (Ajusta si tu serializer de User está en otra parte)
 
@@ -66,3 +66,23 @@ class CouponSerializer(serializers.ModelSerializer):
 
 class ValidateCouponSerializer(serializers.Serializer):
     code = serializers.CharField(max_length=20)
+
+class DeliveryInfoSerializer(serializers.Serializer):
+    address = serializers.CharField(required=True)
+    latitude = serializers.FloatField(required=True)
+    longitude = serializers.FloatField(required=True)
+    description = serializers.CharField(required=False, allow_blank=True)
+
+# 2. Serializer para mostrar al Repartidor (Output)
+class DeliveryOrderSerializer(serializers.ModelSerializer):
+    # Incluimos info básica de la venta y del cliente
+    customer_name = serializers.CharField(source='sale.user.full_name', read_only=True)
+    customer_phone = serializers.CharField(source='sale.user.phone_number', read_only=True) # Si tienes telf
+    sale_total = serializers.DecimalField(source='sale.total_amount', max_digits=10, decimal_places=2, read_only=True)
+    
+    class Meta:
+        model = Delivery
+        fields = [
+            'id', 'status', 'address', 'latitude', 'longitude', 
+            'description', 'customer_name', 'customer_phone', 'sale_total', 'created_at'
+        ]

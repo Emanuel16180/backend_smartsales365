@@ -3,6 +3,7 @@ from django.utils import timezone
 from datetime import timedelta
 from django.conf import settings
 from apps.products.models import Product, Warranty
+from django.conf import settings
 
 class Coupon(models.Model):
     code = models.CharField(max_length=20, unique=True, verbose_name="Código")
@@ -88,3 +89,40 @@ class ActivatedWarranty(models.Model):
 
     def __str__(self):
         return f"Garantía de {self.product.name} para {self.user.email} (Vence: {self.expiration_date})"
+
+class Delivery(models.Model):
+    class DeliveryStatus(models.TextChoices):
+        PENDING = 'PENDING', 'Pendiente de Asignación'
+        ASSIGNED = 'ASSIGNED', 'Asignado a Repartidor'
+        IN_TRANSIT = 'IN_TRANSIT', 'En Camino'
+        DELIVERED = 'DELIVERED', 'Entregado'
+        FAILED = 'FAILED', 'No se pudo entregar'
+
+    # Relación 1 a 1 con la Venta (Una venta tiene una nota de entrega)
+    sale = models.OneToOneField(Sale, on_delete=models.CASCADE, related_name='delivery_note')
+    
+    # El repartidor asignado (puede ser nulo al principio)
+    driver = models.ForeignKey(
+        settings.AUTH_USER_MODEL, 
+        on_delete=models.SET_NULL, 
+        null=True, blank=True,
+        related_name='assigned_deliveries'
+    )
+
+    # Datos de ubicación
+    address = models.CharField(max_length=255, verbose_name="Dirección Física")
+    latitude = models.FloatField(verbose_name="Latitud")
+    longitude = models.FloatField(verbose_name="Longitud")
+    description = models.TextField(blank=True, null=True, verbose_name="Detalles de la casa/referencias")
+    
+    status = models.CharField(
+        max_length=20, 
+        choices=DeliveryStatus.choices, 
+        default=DeliveryStatus.PENDING
+    )
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Entrega #{self.id} para Venta #{self.sale.id} ({self.status})"

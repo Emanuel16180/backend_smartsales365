@@ -16,7 +16,7 @@ urlpatterns = [
 
     path('admin/all-sales/', views.AdminSaleListView.as_view(), name='admin-all-sales'),
 
-    # --- CUPONES (Configuración Manual / Sin Router) ---
+    # --- CUPONES ---
     
     # 1. Validar Cupón (Poner ANTES del ID para evitar conflictos)
     #    POST /api/v1/sales/coupons/validate/
@@ -42,4 +42,25 @@ urlpatterns = [
         'patch': 'partial_update',
         'delete': 'destroy'
     }), name='coupon-detail'),
+
+    # --- DELIVERY ---
+    
+    # 1. Listar entregas (Para el repartidor)
+    #    GET /api/v1/sales/deliveries/
+    path('deliveries/', views.DeliveryViewSet.as_view({
+        'get': 'list'
+    }), name='delivery-list'),
+
+    # 2. Ver detalle de una entrega
+    #    GET /api/v1/sales/deliveries/5/
+    path('deliveries/<int:pk>/', views.DeliveryViewSet.as_view({
+        'get': 'retrieve'
+    }), name='delivery-detail'),
+
+    # 3. Actualizar estado (En camino, Entregado, etc.)
+    #    PATCH /api/v1/sales/deliveries/5/update-status/
+    path('deliveries/<int:pk>/update-status/', views.DeliveryViewSet.as_view({
+        'patch': 'update_status'
+    }), name='delivery-update-status'),
+
 ]

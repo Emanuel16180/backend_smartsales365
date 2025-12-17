@@ -33,6 +33,7 @@ class User(AbstractUser):
     class Role(models.TextChoices):
         CUSTOMER = 'CUSTOMER', _('Cliente')
         EMPLOYEE = 'EMPLOYEE', _('Trabajador')
+        DELIVERY = "DELIVERY", _('Delivery')
 
     # El email será el campo de login
     username = None 
