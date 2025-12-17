@@ -30,7 +30,7 @@ class CouponViewSet(viewsets.ModelViewSet):
     """
     queryset = Coupon.objects.all().order_by('-id')
     serializer_class = CouponSerializer
-    permission_classes = [IsAdminUser] # Por defecto solo Admin
+    permission_classes = [IsAuthenticated]
 
     # Endpoint extra: POST /api/v1/sales/coupons/validate/
     # Accesible para CUALQUIER persona (AllowAny) para chequear código antes de pagar
